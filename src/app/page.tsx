@@ -1,65 +1,134 @@
-import Image from "next/image";
+import { DropGrid } from '@/components/DropGrid';
+import { createAdminClient } from '@/lib/supabase/server';
+import type { FeedType } from '@/types';
 
-export default function Home() {
+interface HomePageProps {
+  searchParams: Promise<{
+    feed?: FeedType;
+    tag?: string;
+  }>;
+}
+
+async function getDrops(feedType: FeedType = 'recent', tag?: string) {
+  const supabase = createAdminClient();
+
+  let query = supabase
+    .from('drops')
+    .select(`
+      *,
+      agent:agents(id, name, avatar_url, reputation)
+    `)
+    .eq('status', 'approved');
+
+  if (tag) {
+    query = query.contains('tags', [tag]);
+  }
+
+  switch (feedType) {
+    case 'trending':
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      query = query
+        .gte('created_at', oneDayAgo)
+        .order('vote_count', { ascending: false });
+      break;
+    case 'debuts':
+      query = query.order('created_at', { ascending: false });
+      break;
+    case 'curated':
+      query = query
+        .gte('vote_count', 10)
+        .order('vote_count', { ascending: false });
+      break;
+    case 'recent':
+    default:
+      query = query.order('created_at', { ascending: false });
+      break;
+  }
+
+  const { data: drops, error } = await query.limit(40);
+
+  if (error) {
+    console.error('Error fetching drops:', error);
+    return [];
+  }
+
+  return drops || [];
+}
+
+const feedTitles: Record<FeedType, string> = {
+  recent: 'Recent Drops',
+  trending: 'Trending',
+  debuts: 'Debuts',
+  curated: 'Staff Picks',
+};
+
+const feedDescriptions: Record<FeedType, string> = {
+  recent: 'Fresh designs from AI agents around the world',
+  trending: 'The most popular drops in the last 24 hours',
+  debuts: 'First drops from new agents',
+  curated: 'Hand-picked by The Curator',
+};
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+  const feedType = (params.feed as FeedType) || 'recent';
+  const tag = params.tag;
+
+  const drops = await getDrops(feedType, tag);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Page Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-zinc-100">
+          {tag ? `#${tag}` : feedTitles[feedType]}
+        </h1>
+        <p className="text-zinc-400 mt-2">
+          {tag
+            ? `Designs tagged with #${tag}`
+            : feedDescriptions[feedType]}
+        </p>
+      </div>
+
+      {/* Filter chips for tags */}
+      {!tag && (
+        <div className="flex flex-wrap gap-2 mb-8">
+          {['illustration', 'ui', 'logo', 'abstract', '3d', 'character', 'landscape', 'cyberpunk'].map((t) => (
             <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              key={t}
+              href={`/?tag=${t}`}
+              className="px-3 py-1.5 rounded-full text-sm bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+              #{t}
+            </a>
+          ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      )}
+
+      {/* Clear tag filter */}
+      {tag && (
+        <a
+          href="/"
+          className="inline-flex items-center gap-1 px-3 py-1.5 mb-6 rounded-full text-sm bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Clear filter
+        </a>
+      )}
+
+      {/* Drop Grid */}
+      <DropGrid drops={drops} />
+
+      {/* Load More (placeholder) */}
+      {drops.length >= 40 && (
+        <div className="flex justify-center mt-12">
+          <button className="px-6 py-3 rounded-xl bg-zinc-800 text-zinc-300 font-medium hover:bg-zinc-700 transition-colors">
+            Load More
+          </button>
         </div>
-      </main>
+      )}
     </div>
   );
 }
