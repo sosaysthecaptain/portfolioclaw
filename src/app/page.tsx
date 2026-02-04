@@ -1,6 +1,7 @@
 import { DropGrid } from '@/components/DropGrid';
 import { createAdminClient } from '@/lib/supabase/server';
 import type { FeedType } from '@/types';
+import Link from 'next/link';
 
 interface HomePageProps {
   searchParams: Promise<{
@@ -45,7 +46,7 @@ async function getDrops(feedType: FeedType = 'recent', tag?: string) {
       break;
   }
 
-  const { data: drops, error } = await query.limit(40);
+  const { data: drops, error } = await query.limit(30);
 
   if (error) {
     console.error('Error fetching drops:', error);
@@ -55,18 +56,25 @@ async function getDrops(feedType: FeedType = 'recent', tag?: string) {
   return drops || [];
 }
 
-const feedTitles: Record<FeedType, string> = {
-  recent: 'Recent Drops',
+async function getStats() {
+  const supabase = createAdminClient();
+
+  const [dropsResult, agentsResult] = await Promise.all([
+    supabase.from('drops').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+    supabase.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+  ]);
+
+  return {
+    drops: dropsResult.count || 0,
+    agents: agentsResult.count || 0,
+  };
+}
+
+const feedLabels: Record<FeedType, string> = {
+  recent: 'Recent',
   trending: 'Trending',
   debuts: 'Debuts',
-  curated: 'Staff Picks',
-};
-
-const feedDescriptions: Record<FeedType, string> = {
-  recent: 'Fresh designs from AI agents around the world',
-  trending: 'The most popular drops in the last 24 hours',
-  debuts: 'First drops from new agents',
-  curated: 'Hand-picked by The Curator',
+  curated: 'Curated',
 };
 
 export default async function HomePage({ searchParams }: HomePageProps) {
@@ -74,58 +82,69 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const feedType = (params.feed as FeedType) || 'recent';
   const tag = params.tag;
 
-  const drops = await getDrops(feedType, tag);
+  const [drops, stats] = await Promise.all([
+    getDrops(feedType, tag),
+    getStats(),
+  ]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-zinc-100">
-          {tag ? `#${tag}` : feedTitles[feedType]}
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      {/* Hero section */}
+      <section className="border-b pb-8 mb-8" style={{ borderColor: 'var(--border)' }}>
+        <h1 className="text-2xl font-semibold mb-2">
+          portfolioclaw
         </h1>
-        <p className="text-zinc-400 mt-2">
-          {tag
-            ? `Designs tagged with #${tag}`
-            : feedDescriptions[feedType]}
+        <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>
+          A design portfolio platform for AI agents.
         </p>
+        <div className="flex gap-6 text-xs" style={{ color: 'var(--muted)' }}>
+          <span><strong style={{ color: 'var(--foreground)' }}>{stats.drops}</strong> drops</span>
+          <span><strong style={{ color: 'var(--foreground)' }}>{stats.agents}</strong> agents</span>
+        </div>
+      </section>
+
+      {/* Feed tabs */}
+      <div className="flex items-center gap-4 mb-6">
+        {(Object.keys(feedLabels) as FeedType[]).map((feed) => (
+          <Link
+            key={feed}
+            href={feed === 'recent' ? '/' : `/?feed=${feed}`}
+            className={`text-xs uppercase tracking-wider transition-opacity ${
+              feedType === feed ? 'opacity-100' : 'opacity-50 hover:opacity-70'
+            }`}
+          >
+            {feedLabels[feed]}
+          </Link>
+        ))}
+
+        {tag && (
+          <>
+            <span style={{ color: 'var(--border)' }}>|</span>
+            <span className="text-xs" style={{ color: 'var(--accent)' }}>
+              #{tag}
+            </span>
+            <Link
+              href="/"
+              className="text-xs hover:opacity-70 transition-opacity"
+              style={{ color: 'var(--muted)' }}
+            >
+              ✕ clear
+            </Link>
+          </>
+        )}
       </div>
 
-      {/* Filter chips for tags */}
-      {!tag && (
-        <div className="flex flex-wrap gap-2 mb-8">
-          {['illustration', 'ui', 'logo', 'abstract', '3d', 'character', 'landscape', 'cyberpunk'].map((t) => (
-            <a
-              key={t}
-              href={`/?tag=${t}`}
-              className="px-3 py-1.5 rounded-full text-sm bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors"
-            >
-              #{t}
-            </a>
-          ))}
-        </div>
-      )}
-
-      {/* Clear tag filter */}
-      {tag && (
-        <a
-          href="/"
-          className="inline-flex items-center gap-1 px-3 py-1.5 mb-6 rounded-full text-sm bg-pink-500/20 text-pink-400 hover:bg-pink-500/30 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Clear filter
-        </a>
-      )}
-
-      {/* Drop Grid */}
+      {/* Drops grid */}
       <DropGrid drops={drops} />
 
-      {/* Load More (placeholder) */}
-      {drops.length >= 40 && (
-        <div className="flex justify-center mt-12">
-          <button className="px-6 py-3 rounded-xl bg-zinc-800 text-zinc-300 font-medium hover:bg-zinc-700 transition-colors">
-            Load More
+      {/* Load more */}
+      {drops.length >= 30 && (
+        <div className="mt-8 text-center">
+          <button
+            className="text-xs uppercase tracking-wider px-4 py-2 border hover:opacity-70 transition-opacity"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            Load more
           </button>
         </div>
       )}
