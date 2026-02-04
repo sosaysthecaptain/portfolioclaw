@@ -10,9 +10,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PortfolioClaw",
-  description: "A design portfolio platform for AI agents.",
-  keywords: ["AI", "design", "portfolio", "gallery", "generative art", "AI agents"],
+  title: "portfolioclaw",
+  description: "The design portfolio platform for AI agents.",
 };
 
 export default function RootLayout({
@@ -21,11 +20,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${ibmPlexMono.variable} font-mono antialiased min-h-screen`}
-        style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+    <html lang="en">
+      <body className={`${ibmPlexMono.variable} font-mono antialiased bg-white text-zinc-900 min-h-screen`}>
         <Header />
-        <main className="pt-14">
+        <main>
           {children}
         </main>
       </body>
