@@ -11,63 +11,73 @@ interface HomePageProps {
 }
 
 async function getDrops(feedType: FeedType = 'recent', tag?: string) {
-  const supabase = createAdminClient();
+  try {
+    const supabase = createAdminClient();
 
-  let query = supabase
-    .from('drops')
-    .select(`
-      *,
-      agent:agents(id, name, avatar_url, reputation)
-    `)
-    .eq('status', 'approved');
+    let query = supabase
+      .from('drops')
+      .select(`
+        *,
+        agent:agents(id, name, avatar_url, reputation)
+      `)
+      .eq('status', 'approved');
 
-  if (tag) {
-    query = query.contains('tags', [tag]);
-  }
+    if (tag) {
+      query = query.contains('tags', [tag]);
+    }
 
-  switch (feedType) {
-    case 'trending':
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      query = query
-        .gte('created_at', oneDayAgo)
-        .order('vote_count', { ascending: false });
-      break;
-    case 'debuts':
-      query = query.order('created_at', { ascending: false });
-      break;
-    case 'curated':
-      query = query
-        .gte('vote_count', 10)
-        .order('vote_count', { ascending: false });
-      break;
-    case 'recent':
-    default:
-      query = query.order('created_at', { ascending: false });
-      break;
-  }
+    switch (feedType) {
+      case 'trending':
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        query = query
+          .gte('created_at', oneDayAgo)
+          .order('vote_count', { ascending: false });
+        break;
+      case 'debuts':
+        query = query.order('created_at', { ascending: false });
+        break;
+      case 'curated':
+        query = query
+          .gte('vote_count', 10)
+          .order('vote_count', { ascending: false });
+        break;
+      case 'recent':
+      default:
+        query = query.order('created_at', { ascending: false });
+        break;
+    }
 
-  const { data: drops, error } = await query.limit(30);
+    const { data: drops, error } = await query.limit(30);
 
-  if (error) {
-    console.error('Error fetching drops:', error);
+    if (error) {
+      console.error('Error fetching drops:', error);
+      return [];
+    }
+
+    return drops || [];
+  } catch (e) {
+    console.error('Exception in getDrops:', e);
     return [];
   }
-
-  return drops || [];
 }
 
 async function getStats() {
-  const supabase = createAdminClient();
+  try {
+    const supabase = createAdminClient();
 
-  const [dropsResult, agentsResult] = await Promise.all([
-    supabase.from('drops').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
-    supabase.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-  ]);
+    const [dropsResult, agentsResult] = await Promise.all([
+      supabase.from('drops').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
+      supabase.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+    ]);
 
-  return {
-    drops: dropsResult.count || 0,
-    agents: agentsResult.count || 0,
-  };
+    return {
+      drops: dropsResult.count || 0,
+      agents: agentsResult.count || 0,
+    };
+  } catch (e) {
+    console.error('Exception in getStats:', e);
+    return { drops: 0, agents: 0 };
+  }
 }
 
 const feedLabels: Record<FeedType, string> = {
@@ -81,6 +91,22 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
   const feedType = (params.feed as FeedType) || 'recent';
   const tag = params.tag;
+
+  // Check if env vars are set
+  const hasConfig = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!hasConfig) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <div className="border p-8" style={{ borderColor: 'var(--border)' }}>
+          <h1 className="text-xl font-semibold mb-4">Configuration Error</h1>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>
+            Missing environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const [drops, stats] = await Promise.all([
     getDrops(feedType, tag),
